@@ -160,12 +160,13 @@ void dm_thread_native_wait(int entering) {
 // left both workers in this loop for good, and the game stopped presenting as New Story loaded
 int dm_yield_to_core_peers(int all) {
     thr_t *self = pthread_getspecific(g_keythr); if (!self) return 0;
-    // Bounded handoff (local fix for 9a56ecf): an unbounded wait deadlocks games whose
-    // same-core workers spin in guest code without a guest wait (TotK boot: main thread
-    // yields forever, packaged textures never upload, black screen). Default cap 5 ms —
-    // the cutoff the old implementation had. DM_HANDOFF_CAP_US=0 restores pure upstream.
+    // Hang-only backstop: an unbounded wait deadlocks games whose same-core workers spin
+    // in guest code without a guest wait (TotK boot on 9a56ecf: main thread yields forever,
+    // packaged textures never upload, black screen, #247). The default cap is 2 s: the wake
+    // protocol legitimately waits tens of ms (t_preempt's dispatcher relays), so only a true
+    // hang can ever reach it. DM_HANDOFF_CAP_US=0 restores the unbounded upstream wait.
     static int cap_us = -1;
-    if (cap_us < 0) { const char *e = getenv("DM_HANDOFF_CAP_US"); cap_us = e ? atoi(e) : 5000; }
+    if (cap_us < 0) { const char *e = getenv("DM_HANDOFF_CAP_US"); cap_us = e ? atoi(e) : 2000000; }
     uint64_t bit = 1ull << (self->core & 63); int waited = 0;
     if (self->mask & ~bit) return 0;
     uint64_t t0 = now_ns();
